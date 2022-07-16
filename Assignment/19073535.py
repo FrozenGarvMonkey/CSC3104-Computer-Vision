@@ -154,7 +154,7 @@ def RefineSkyImage(bopt, image):
     return bopt
 
 
-
+# Main Function to decide our optimal sky detection function
 def SkyDetect(enhanced_img, img):
     optimal_border_img = CalculateOptimalBorder(enhanced_img)
 
@@ -179,6 +179,7 @@ def NoSkyRegion(bopt, thresh1, thresh2, thresh3):
 
     return border_ave < thresh1 or (border_ave < thresh2 and abs_sum_abs_diff > thresh3)
 
+
 def GammaCorrection(img, gamma):
     invGamma = 1 / gamma
 
@@ -187,21 +188,20 @@ def GammaCorrection(img, gamma):
 
     return cv.LUT(img, table)
 
-def adjust_contrast_brightness(img, contrast:float=1.0, brightness:int=0):
-    """
-    Adjusts contrast and brightness of an uint8 image.
-    contrast:   (0.0,  inf) with 1.0 leaving the contrast as is
-    brightness: [-255, 255] with 0 leaving the brightness as is
-    """
+def AdjustBrightnessContrast(img, contrast:float=1.0, brightness:int=0):
     brightness += int(round(255*(1-contrast)/2))
     return cv.addWeighted(img, contrast, img, 0, brightness)
 
-def IncreaseSaturation(img, saturation):
+def ChangeSaturation(img, saturation):
     hsvImg = cv.cvtColor(img, cv.COLOR_BGR2HSV)
     hsvImg[...,1] = hsvImg[...,1] * saturation
     return cv.cvtColor(hsvImg, cv.COLOR_HSV2BGR)
 
-def ExtractColorChannel(img):
+# Inspired by Journal 1. Image is enhanced by 
+# directly extracting color channels that highlight the sky region.
+# This function also applies the morphological operations described in
+# the journal.
+def ImageEnhancement(img):
     lab= cv.cvtColor(img, cv.COLOR_BGR2LAB)
     l_channel, a_channel, b_channel = cv.split(lab)
 
@@ -211,10 +211,16 @@ def ExtractColorChannel(img):
     blue_img = cv.merge((cl, a_channel, b_channel))
 
     enhanced_img = cv.cvtColor(blue_img, cv.COLOR_LAB2BGR)
+
+    enhanced_img = ChangeSaturation(enhanced_img, 0.7)
+    enhanced_img = AdjustBrightnessContrast(enhanced_img, 1.2, 1.2)
+    enhanced_img = GammaCorrection(enhanced_img, 0.7)
+    #enhanced_img = cv.fastNlMeansDenoisingColored(enhanced_img, None, 10, 10, 7, 15)
+    kernel = np.ones((7, 7), np.uint8)
+    enhanced_img = cv.dilate(enhanced_img, kernel, iterations=2)
+    enhanced_img = cv.erode(enhanced_img, kernel, iterations=1)
     
-    enhanced_img = adjust_contrast_brightness(enhanced_img, 2.5, 2)
-    
-    CompareImgs(img, enhanced_img)
+    #CompareImgs(img, enhanced_img)
 
     return enhanced_img
 
@@ -236,7 +242,7 @@ def main():
     for i in images:
         global ITER 
         ITER = ITER + 1
-        SkyDetect(ExtractColorChannel(i), i)
+        SkyDetect(ImageEnhancement(i), i)
     
 if __name__ == '__main__':
     main()
