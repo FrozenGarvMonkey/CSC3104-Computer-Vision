@@ -113,6 +113,7 @@ def PartialSky(bopt, thresh4):
     return np.any(np.diff(bopt) > thresh4)
 
 
+# Refinement function taken from Journal 2
 def RefineSkyImage(bopt, image):
     sky_mask = GenerateMask(bopt, image)
 
@@ -162,7 +163,6 @@ def SkyDetect(enhanced_img, img):
         print("No sky detected")
         return
 
-
     elif PartialSky(optimal_border_img, enhanced_img.shape[1]/3):
         refined_optimal_border = RefineSkyImage(optimal_border_img, enhanced_img)
         DisplayMask(refined_optimal_border, img)
@@ -205,6 +205,7 @@ def ImageEnhancement(img):
     lab= cv.cvtColor(img, cv.COLOR_BGR2LAB)
     l_channel, a_channel, b_channel = cv.split(lab)
 
+    # Instead of extracting the blue and violet colour channels, the brightness channel is normalised using a histogram.
     clahe = cv.createCLAHE(clipLimit=4.0, tileGridSize=(13,13))
     cl = clahe.apply(l_channel)
 
@@ -216,6 +217,8 @@ def ImageEnhancement(img):
     enhanced_img = AdjustBrightnessContrast(enhanced_img, 1.2, 1.2)
     enhanced_img = GammaCorrection(enhanced_img, 0.7)
     #enhanced_img = cv.fastNlMeansDenoisingColored(enhanced_img, None, 10, 10, 7, 15)
+
+    # Dilation & Erosion
     kernel = np.ones((7, 7), np.uint8)
     enhanced_img = cv.dilate(enhanced_img, kernel, iterations=2)
     enhanced_img = cv.erode(enhanced_img, kernel, iterations=1)
