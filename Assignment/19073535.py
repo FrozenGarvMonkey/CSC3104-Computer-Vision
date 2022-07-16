@@ -19,7 +19,7 @@ import os
 ITER = 0
 
 # Optional Function in order to compare original images to their masked/sky_segmented versions
-def compare_imgs(img_1,img_2):
+def CompareImgs(img_1,img_2):
     plt.subplots(1,2)
     plt.subplot(1,2,1)
     plt.imshow(img_1)
@@ -28,7 +28,7 @@ def compare_imgs(img_1,img_2):
     plt.show()
 
 # Iterates through image to create mask
-def make_mask(b, image):
+def GenerateMask(b, image):
     mask = np.zeros((image.shape[0], image.shape[1], 1), dtype=np.uint8)
     for xx, yy in enumerate(b):
         mask[yy:, xx] = 255
@@ -36,27 +36,27 @@ def make_mask(b, image):
     return mask
 
 # Saves images based on order 
-def save_mask(img):
+def SaveImage(img):
     cv.imwrite(("output/image_{}.jpg".format(ITER)), img)
 
 
 # Applies mask and saves image (Can optionally also uncomment compare_imgs in order to view images and their masks side-by-side)
-def display_mask(b, image, color=[0, 0, 0]):    
-    result = cv.bitwise_and(image, image, mask=cv.bitwise_not(make_mask(b, image))) # Mask inverted in order to save images of segmented sky
+def DisplayMask(b, image, color=[0, 0, 0]):    
+    result = cv.bitwise_and(image, image, mask=cv.bitwise_not(GenerateMask(b, image))) # Mask inverted in order to save images of segmented sky
     #compare_imgs(image, result)
-    save_mask(result)
+    SaveImage(result)
 
 
 # Image is first converted to grayscale and then 
 # calculates the gradient magnitude by combining two gradient images (horizontal and vertical)
 # generated using sobel functions.
-def color_to_gradient(image):
+def ColorToGradient(image):
     gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
     return np.hypot(cv.Sobel(gray, cv.CV_64F, 1, 0), cv.Sobel(gray, cv.CV_64F, 0, 1))
 
 # Energy Function extracted directly from Journal 2
-def energy_function(b_tmp, image):
-    sky_mask = make_mask(b_tmp, image)
+def EnergyFunction(b_tmp, image):
+    sky_mask = GenerateMask(b_tmp, image)
 
     ground = np.ma.array(image, mask=cv.cvtColor(cv.bitwise_not(sky_mask), cv.COLOR_GRAY2BGR)).compressed()
     sky = np.ma.array(image, mask=cv.cvtColor(sky_mask, cv.COLOR_GRAY2BGR)).compressed()
@@ -76,7 +76,7 @@ def energy_function(b_tmp, image):
     )
 
 # Detect position of horizon. Taken from Journal 2.
-def calculate_border(grad, t):
+def CalcBorder(grad, t):
     sky_b = np.full(grad.shape[1], grad.shape[0])
 
     for x in range(grad.shape[1]):
@@ -88,8 +88,8 @@ def calculate_border(grad, t):
     return sky_b
 
 # Optimize energy function jn. 
-def calculate_border_optimal(image, thresh_min=5, thresh_max=600, search_step=5):
-    grad = color_to_gradient(image)
+def CalculateOptimalBorder(image, thresh_min=5, thresh_max=600, search_step=5):
+    grad = ColorToGradient(image)
 
     n = ((thresh_max - thresh_min) // search_step) + 1
 
@@ -99,8 +99,8 @@ def calculate_border_optimal(image, thresh_min=5, thresh_max=600, search_step=5)
     for k in range(1, n + 1):
         t = thresh_min + ((thresh_max - thresh_min) // n - 1) * (k - 1)
 
-        b_tmp = calculate_border(grad, t)
-        jn = energy_function(b_tmp, image)
+        b_tmp = CalcBorder(grad, t)
+        jn = EnergyFunction(b_tmp, image)
 
         if jn > jn_max:
             jn_max = jn
@@ -114,7 +114,7 @@ def PartialSky(bopt, thresh4):
 
 
 def RefineSkyImage(bopt, image):
-    sky_mask = make_mask(bopt, image)
+    sky_mask = GenerateMask(bopt, image)
 
     ground = np.ma.array(image, mask=cv.cvtColor(cv.bitwise_not(sky_mask), cv.COLOR_GRAY2BGR)).compressed()
     
@@ -155,20 +155,20 @@ def RefineSkyImage(bopt, image):
 
 
 
-def SkyDetect(image):
-    optimal_border_img = calculate_border_optimal(image)
+def SkyDetect(enhanced_img, img):
+    optimal_border_img = CalculateOptimalBorder(enhanced_img)
 
-    if NoSkyRegion(optimal_border_img, image.shape[0]/30, image.shape[0]/4, 5):
+    if NoSkyRegion(optimal_border_img, enhanced_img.shape[0]/30, enhanced_img.shape[0]/4, 5):
         print("No sky detected")
         return
 
 
-    elif PartialSky(optimal_border_img, image.shape[1]/3):
-        refined_optimal_border = RefineSkyImage(optimal_border_img, image)
-        display_mask(refined_optimal_border, image)
+    elif PartialSky(optimal_border_img, enhanced_img.shape[1]/3):
+        refined_optimal_border = RefineSkyImage(optimal_border_img, enhanced_img)
+        DisplayMask(refined_optimal_border, img)
 
     else:
-        display_mask(optimal_border_img, image)
+        DisplayMask(optimal_border_img, img)
 
         
 
@@ -179,6 +179,44 @@ def NoSkyRegion(bopt, thresh1, thresh2, thresh3):
 
     return border_ave < thresh1 or (border_ave < thresh2 and abs_sum_abs_diff > thresh3)
 
+def GammaCorrection(img, gamma):
+    invGamma = 1 / gamma
+
+    table = [((i / 255) ** invGamma) * 255 for i in range(256)]
+    table = np.array(table, np.uint8)
+
+    return cv.LUT(img, table)
+
+def adjust_contrast_brightness(img, contrast:float=1.0, brightness:int=0):
+    """
+    Adjusts contrast and brightness of an uint8 image.
+    contrast:   (0.0,  inf) with 1.0 leaving the contrast as is
+    brightness: [-255, 255] with 0 leaving the brightness as is
+    """
+    brightness += int(round(255*(1-contrast)/2))
+    return cv.addWeighted(img, contrast, img, 0, brightness)
+
+def IncreaseSaturation(img, saturation):
+    hsvImg = cv.cvtColor(img, cv.COLOR_BGR2HSV)
+    hsvImg[...,1] = hsvImg[...,1] * saturation
+    return cv.cvtColor(hsvImg, cv.COLOR_HSV2BGR)
+
+def ExtractColorChannel(img):
+    lab= cv.cvtColor(img, cv.COLOR_BGR2LAB)
+    l_channel, a_channel, b_channel = cv.split(lab)
+
+    clahe = cv.createCLAHE(clipLimit=4.0, tileGridSize=(13,13))
+    cl = clahe.apply(l_channel)
+
+    blue_img = cv.merge((cl, a_channel, b_channel))
+
+    enhanced_img = cv.cvtColor(blue_img, cv.COLOR_LAB2BGR)
+    
+    enhanced_img = adjust_contrast_brightness(enhanced_img, 2.5, 2)
+    
+    CompareImgs(img, enhanced_img)
+
+    return enhanced_img
 
 # Driver Function
 def main():
@@ -198,7 +236,7 @@ def main():
     for i in images:
         global ITER 
         ITER = ITER + 1
-        SkyDetect(i)
+        SkyDetect(ExtractColorChannel(i), i)
     
 if __name__ == '__main__':
     main()
