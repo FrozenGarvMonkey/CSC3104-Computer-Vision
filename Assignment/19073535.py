@@ -229,7 +229,7 @@ def ImageEnhancement(img):
 
 # Driver Function
 def main():
-    dir = input("Enter Folder Name (Must be in root): ")
+    dir = input("Enter Folder Name (Must be in imgs folder): ")
     output_dir = "output"
 
     if not os.path.exists(output_dir):
